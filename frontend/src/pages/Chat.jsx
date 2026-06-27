@@ -1,0 +1,98 @@
+import { useState, useRef, useEffect } from "react";
+import { Link } from "react-router-dom";
+import api from "../api/axios";
+import { useAuth } from "../context/AuthContext";
+
+export default function Chat() {
+  const [messages, setMessages] = useState([]); // {role, content, sources?}
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { user, logout } = useAuth();
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text || loading) return;
+
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    setInput("");
+    setLoading(true);
+
+    try {
+      const { data } = await api.post("/chat", { message: text });
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: data.answer, sources: data.sources },
+      ]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            err.response?.data?.message ||
+            "Something went wrong - check that GEMINI_API_KEY is set correctly in backend/.env",
+          isError: true,
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="chat-page">
+      <header>
+        <h2>Chat — {user?.name}</h2>
+        <div>
+          <Link to="/dashboard">Documents</Link>
+          <button onClick={logout}>Log out</button>
+        </div>
+      </header>
+
+      <div className="chat-window">
+        {messages.length === 0 && (
+          <p className="chat-empty">
+            Ask a question about a document you've uploaded.
+          </p>
+        )}
+
+        {messages.map((m, i) => (
+          <div key={i} className={`bubble ${m.role} ${m.isError ? "error-bubble" : ""}`}>
+            <p>{m.content}</p>
+            {m.sources && m.sources.length > 0 && (
+              <div className="sources">
+                <span className="sources-label">Sources:</span>
+                {m.sources.map((s) => (
+                  <span key={s.id} className="source-chip">
+                    [{s.id}] {s.sourceDocument} · chunk #{s.chunkIndex} · {s.score.toFixed(2)}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {loading && <div className="bubble assistant loading">Thinking…</div>}
+        <div ref={bottomRef} />
+      </div>
+
+      <form onSubmit={handleSend} className="chat-input">
+        <input
+          type="text"
+          placeholder="Ask about your documents..."
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+        />
+        <button type="submit" disabled={loading || !input.trim()}>
+          Send
+        </button>
+      </form>
+    </div>
+  );
+}

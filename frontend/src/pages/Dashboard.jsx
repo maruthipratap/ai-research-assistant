@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
+import { Link } from "react-router-dom";
 
 export default function Dashboard() {
   const [file, setFile] = useState(null);
@@ -63,7 +64,10 @@ export default function Dashboard() {
     <div className="dashboard">
       <header>
         <h2>Welcome, {user?.name}</h2>
-        <button onClick={logout}>Log out</button>
+        <div>
+          <Link to="/chat">Go to Chat</Link>
+          <button onClick={logout}>Log out</button>
+        </div>
       </header>
 
       <section className="upload-box">
