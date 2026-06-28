@@ -4,7 +4,7 @@ import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 
 export default function Chat() {
-  const [messages, setMessages] = useState([]); // {role, content, sources?}
+  const [messages, setMessages] = useState([]); // {role, content, sources?, toolsUsed?}
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const { user, logout } = useAuth();
@@ -27,7 +27,12 @@ export default function Chat() {
       const { data } = await api.post("/chat", { message: text });
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: data.answer, sources: data.sources },
+        {
+          role: "assistant",
+          content: data.answer,
+          sources: data.sources,
+          toolsUsed: data.toolsUsed,
+        },
       ]);
     } catch (err) {
       setMessages((prev) => [
@@ -65,6 +70,17 @@ export default function Chat() {
         {messages.map((m, i) => (
           <div key={i} className={`bubble ${m.role} ${m.isError ? "error-bubble" : ""}`}>
             <p>{m.content}</p>
+            {m.toolsUsed && m.toolsUsed.length > 0 && (
+              <div className="tools-used">
+                {m.toolsUsed.map((t, j) => (
+                  <span key={j} className="tool-chip">
+                    🔧 {t.name}
+                    {t.args?.query ? `: "${t.args.query}"` : ""}
+                    {t.args?.expression ? `: ${t.args.expression}` : ""}
+                  </span>
+                ))}
+              </div>
+            )}
             {m.sources && m.sources.length > 0 && (
               <div className="sources">
                 <span className="sources-label">Sources:</span>

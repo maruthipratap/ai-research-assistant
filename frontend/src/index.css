@@ -211,6 +211,22 @@ body {
   color: #555;
 }
 
+.tools-used {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tool-chip {
+  background: #eef2ff;
+  color: #4f46e5;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
 .chat-input {
   display: flex;
   gap: 8px;
