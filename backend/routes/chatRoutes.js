@@ -5,25 +5,29 @@ import { runAgent } from "../utils/agent.js";
 const router = express.Router();
 
 // POST /api/chat
-// Body: { message: "explain chapter 5" }
+// Body: { message: "explain chapter 5", history: [{role, content}, ...] }
 //
-// This now runs the full agent loop instead of a fixed "always retrieve
-// then answer" pipeline. The model itself decides whether to search the
-// user's documents, search the web, do a calculation, some combination,
-// or just answer directly - that decision-making is what makes this an
-// "agent" rather than a plain RAG chatbot.
+// `history` is the recent back-and-forth of the conversation, sent by the
+// frontend on every request. Without it, every message would be treated
+// as a brand new conversation with no memory of what was just discussed -
+// which breaks follow-up questions like "what about the second one?"
 router.post("/", protect, async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message, history = [] } = req.body;
     if (!message) {
       return res.status(400).json({ message: "message is required" });
     }
 
-    const { answer, toolsUsed, sources } = await runAgent(message, req.user._id);
+    const { answer, toolsUsed, sources, modelUsed } = await runAgent(
+      message,
+      req.user._id,
+      history
+    );
 
     res.json({
       answer,
-      toolsUsed, // e.g. [{ name: "calculate", args: { expression: "12*4" } }]
+      toolsUsed,
+      modelUsed,
       sources: sources.map((c, i) => ({
         id: i + 1,
         sourceDocument: c.sourceDocument,

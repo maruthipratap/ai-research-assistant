@@ -4,7 +4,7 @@ import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 
 export default function Chat() {
-  const [messages, setMessages] = useState([]); // {role, content, sources?, toolsUsed?}
+  const [messages, setMessages] = useState([]); // {role, content, sources?}
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const { user, logout } = useAuth();
@@ -19,12 +19,24 @@ export default function Chat() {
     const text = input.trim();
     if (!text || loading) return;
 
+    // Snapshot the conversation BEFORE adding this new message - this is
+    // what gets sent as "history" so the backend knows what was already
+    // discussed. Capped to the last 10 turns to keep requests reasonably
+    // sized; error bubbles are excluded since they're not real conversation.
+    const historyForRequest = messages
+      .filter((m) => !m.isError)
+      .slice(-10)
+      .map((m) => ({ role: m.role, content: m.content }));
+
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setInput("");
     setLoading(true);
 
     try {
-      const { data } = await api.post("/chat", { message: text });
+      const { data } = await api.post("/chat", {
+        message: text,
+        history: historyForRequest,
+      });
       setMessages((prev) => [
         ...prev,
         {
@@ -32,6 +44,7 @@ export default function Chat() {
           content: data.answer,
           sources: data.sources,
           toolsUsed: data.toolsUsed,
+          modelUsed: data.modelUsed,
         },
       ]);
     } catch (err) {
@@ -73,11 +86,14 @@ export default function Chat() {
             {m.toolsUsed && m.toolsUsed.length > 0 && (
               <div className="tools-used">
                 {m.toolsUsed.map((t, j) => (
-                  <span key={j} className="tool-chip">
-                    🔧 {t.name}
-                    {t.args?.query ? `: "${t.args.query}"` : ""}
-                    {t.args?.expression ? `: ${t.args.expression}` : ""}
-                  </span>
+                  <details key={j} className="tool-chip">
+                    <summary>
+                      🔧 {t.name}
+                      {t.args?.query ? `: "${t.args.query}"` : ""}
+                      {t.args?.expression ? `: ${t.args.expression}` : ""}
+                    </summary>
+                    <pre className="tool-result-text">{t.result}</pre>
+                  </details>
                 ))}
               </div>
             )}
@@ -91,6 +107,7 @@ export default function Chat() {
                 ))}
               </div>
             )}
+            {m.modelUsed && <p className="model-used">via {m.modelUsed}</p>}
           </div>
         ))}
 
