@@ -1,165 +1,239 @@
-# AI Research Assistant — Phase 1 (Foundation Skeleton)
+# AI Research Assistant
 
-This is the MVP foundation for the full "AI Research Assistant" project.
-**No AI yet on purpose.** This phase is just auth + MongoDB + file upload —
-get this rock solid before adding embeddings, vector search, and the LLM
-on top of it.
+A full-stack AI-powered research assistant that lets you upload documents and chat with them using RAG (Retrieval-Augmented Generation) and agentic tool calling. Think Perplexity + NotebookLM, built from scratch.
 
-## What's in this phase
+**Live demo:** https://ai-research-assistant-fawn.vercel.app
 
-- JWT authentication (register, login, protected routes)
-- Passwords hashed with bcrypt (never stored in plain text)
-- MongoDB (via Mongoose) for users and documents
-- File upload (PDF/TXT) with Multer
-- Text extraction from uploaded PDFs (pdf-parse)
-- A React (Vite) frontend: register/login pages + a dashboard to upload
-  and list documents
+---
 
-## Concepts you can now explain in an interview
+## What it does
 
-- **JWT auth**: stateless auth, signed (not encrypted) tokens, how the
-  `Authorization: Bearer <token>` header works
-- **Password hashing**: bcrypt salting, why hashing ≠ encryption
-- **REST API design**: route structure, status codes, middleware
-- **File upload handling**: multipart/form-data, server-side storage
-- **Text extraction**: turning unstructured files (PDF) into plain text —
-  the first step of every NLP/RAG pipeline
+- Upload PDFs or text files — they get extracted, chunked, and embedded locally
+- Ask questions in natural language — the AI agent searches your documents, the web, or does calculations depending on what's needed
+- Every answer includes citations (which document and chunk it came from) and shows which tools were called
+- Automatic model fallback: if the primary Gemini model hits a rate limit, it silently falls back to the next in the chain
 
-## Setup
+---
 
-### 1. MongoDB
-Create a free cluster at [MongoDB Atlas](https://www.mongodb.com/atlas),
-get your connection string.
-
-### 2. Backend
-```bash
-cd backend
-cp .env.example .env
-# edit .env: paste your MONGO_URI, set a random JWT_SECRET
-npm install
-npm run dev
-```
-Runs on `http://localhost:5000`.
-
-### 3. Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
-Runs on `http://localhost:5173`.
-
-### 4. Try it
-1. Open `http://localhost:5173/register`, create an account
-2. You'll land on the dashboard
-3. Upload a small PDF or .txt file
-4. Refresh — you'll see it listed with status `ready`, meaning text
-   extraction succeeded (check MongoDB Atlas to see the `extractedText`
-   field populated on the document)
-
-## Phase 2 — Chunking, Embeddings, Vector Search (current)
-
-This phase adds the real "vector database" piece. When you upload a document now:
+## Architecture
 
 ```
-Extract text → chunk it → embed each chunk locally → store in a Chunk collection
+React (Vite) → Vercel
+      │
+      ▼
+Node.js / Express REST API → Render
+      │
+      ├── MongoDB Atlas (users, documents, chunks)
+      │       └── Vector Search Index (cosine similarity, 384 dims)
+      │
+      ├── Local Embeddings (@xenova/transformers, all-MiniLM-L6-v2)
+      │
+      ├── Gemini API (agent reasoning + tool calling)
+      │       └── Model fallback chain: 3.1-flash-lite → 2.5-flash → 2.5-flash-lite
+      │
+      ├── Tavily API (web search tool)
+      │
+      └── Sentry (error tracking + monitoring)
 ```
 
-And a new endpoint lets you query it semantically:
-
+### Document pipeline (on upload)
 ```
-Your question → embed it → MongoDB Atlas Vector Search finds the closest chunks → returned with scores
-```
-
-### Architecture decision worth understanding
-Chunks + embeddings live in their **own `Chunk` collection**, not nested
-inside `Document`. Each chunk = one document = one embedding field. This is
-the standard pattern for vector databases (including Atlas Vector Search),
-and it's the same shape you'd use with Pinecone, Weaviate, etc. if you
-swapped vector DBs later.
-
-### Embeddings: how they're generated
-Using `@xenova/transformers` (transformers.js) with the model
-`Xenova/all-MiniLM-L6-v2` — runs **locally in Node**, no API key, no cost.
-It converts text into a 384-number vector. The **first** embedding call
-downloads ~90MB of model weights (one-time); every call after that is fast
-and fully offline.
-
-### Required setup: create the Atlas Vector Search Index
-This is a one-time manual step in the Atlas UI (can't be done from code):
-
-1. Go to your Atlas cluster → **Atlas Search** tab → **Create Search Index**
-2. Choose **JSON Editor**
-3. Database: `ai-research-assistant` (or whatever your DB is named) → Collection: `chunks`
-4. Index name: `vector_index` (must match exactly — the code references this name)
-5. Paste this definition:
-
-```json
-{
-  "fields": [
-    {
-      "type": "vector",
-      "path": "embedding",
-      "numDimensions": 384,
-      "similarity": "cosine"
-    }
-  ]
-}
+PDF/TXT → extract text → clean → chunk (250 words, 40-word overlap)
+        → embed locally (384-dim vectors) → store in MongoDB Atlas Vector Search
 ```
 
-6. Click Create. It takes a minute or two to build.
+### Agent loop (on chat message)
+```
+User question → agent decides which tool(s) to call
+             → search_my_documents | web_search | calculate
+             → execute tool, feed result back to model
+             → repeat until model responds with plain text
+             → return answer + tool trace + citations
+```
 
-### Try it
-1. `cd backend && npm install` (pulls in transformers.js)
-2. Restart the backend
-3. **Re-upload a document** (old documents from Phase 1 have no chunks yet)
-4. First upload will be a bit slow (model download) — watch the backend
-   console log
-5. Once status shows `ready`, use the new search box on the dashboard —
-   try a question about something in your document
-6. You'll get back the most relevant chunks with similarity scores and
-   which document they came from
+---
 
-### Concepts you can now explain in an interview
-- **Embeddings**: turning text into a fixed-length vector that captures
-  meaning, so "semantically similar" text ends up "numerically close"
-- **Vector database**: a database optimized for finding nearest-neighbor
-  vectors at scale, instead of exact matches
-- **Cosine similarity**: how "closeness" between two vectors is measured
-- **Chunking**: why long documents are split before embedding, and the
-  overlap tradeoff
-- **Pre-filter vs post-filter** in vector search (we did post-filter here —
-  know the tradeoff for the interview)
+## Tech stack
 
-## What's next — Phase 3 (RAG Chat)
+| Layer | Tech |
+|---|---|
+| Frontend | React 18, Vite, React Router |
+| Backend | Node.js, Express, ESM |
+| Database | MongoDB Atlas, Mongoose |
+| Vector Search | MongoDB Atlas Vector Search (cosine similarity) |
+| Embeddings | @xenova/transformers (all-MiniLM-L6-v2, runs locally in Node) |
+| LLM | Google Gemini API (gemini-2.5-flash, function calling) |
+| Web Search | Tavily API |
+| Auth | JWT + bcrypt |
+| File handling | Multer, pdf-parse |
+| Containerization | Docker, docker-compose (multi-stage frontend build with nginx) |
+| CI/CD | GitHub Actions (install, build, Docker image build on every push) |
+| Deployment | Render (backend), Vercel (frontend) |
+| Monitoring | Sentry (error tracking), structured request logging, /api/health endpoint |
 
-Now that semantic search works, Phase 3 adds the LLM on top:
-1. Take the top chunks from `/api/search/semantic`
-2. Build a prompt: system instructions + those chunks as context + the user's question
-3. Call an LLM (Claude or OpenAI API)
-4. Stream the answer back with citations pointing to source chunks
-
-This is the actual "RAG" — what we have now is the "R" (retrieval); next
-we add the "AG" (augmented generation).
+---
 
 ## Project structure
 
 ```
 ai-research-assistant/
+├── .github/workflows/
+│   └── ci.yml                    # CI: install, build, Docker on every push
 ├── backend/
-│   ├── config/db.js               # MongoDB connection
-│   ├── models/                    # User, Document, Chunk schemas
-│   ├── middleware/authMiddleware.js
-│   ├── routes/                    # auth, documents, search
+│   ├── config/db.js              # MongoDB Atlas connection
+│   ├── models/
+│   │   ├── User.js               # bcrypt pre-save hook
+│   │   ├── Document.js           # upload metadata + processing status
+│   │   └── Chunk.js              # text chunks + 384-dim embedding vectors
+│   ├── middleware/
+│   │   ├── authMiddleware.js     # JWT verify, attaches req.user
+│   │   └── requestLogger.js      # structured request logging (method, path, status, ms, userId)
+│   ├── routes/
+│   │   ├── authRoutes.js         # register, login, profile
+│   │   ├── documentRoutes.js     # upload → extract → chunk → embed pipeline
+│   │   ├── searchRoutes.js       # semantic search via Atlas Vector Search
+│   │   └── chatRoutes.js         # agent loop entry point
 │   ├── utils/
-│   │   ├── textExtractor.js       # PDF/TXT -> raw text
-│   │   ├── chunker.js             # raw text -> overlapping chunks
-│   │   └── embeddings.js          # chunk -> 384-dim vector (local model)
-│   └── server.js
-└── frontend/
-    └── src/
-        ├── api/axios.js           # attaches JWT to every request
-        ├── context/AuthContext.jsx
-        ├── pages/                 # Login, Register, Dashboard (upload + search)
-        └── App.jsx                # routing + protected routes
+│   │   ├── textExtractor.js      # PDF/TXT → raw text
+│   │   ├── chunker.js            # overlapping word-based chunking
+│   │   ├── embeddings.js         # local embedding model (no API key)
+│   │   ├── retrieval.js          # shared vector search logic
+│   │   ├── agent.js              # Gemini agent loop + model fallback chain
+│   │   ├── tools.js              # tool declarations + execution (search_my_documents, web_search, calculate)
+│   │   └── logger.js             # centralized Sentry + console error logging
+│   ├── instrument.js             # Sentry init (must load before all other imports)
+│   ├── server.js                 # Express app, middleware, routes, health check
+│   ├── Dockerfile                # production Node image
+│   └── .env.example              # all required env vars documented
+├── frontend/
+│   ├── src/
+│   │   ├── api/axios.js          # axios instance, JWT interceptor, env-based base URL
+│   │   ├── context/AuthContext.jsx
+│   │   ├── pages/
+│   │   │   ├── Login.jsx
+│   │   │   ├── Register.jsx
+│   │   │   ├── Dashboard.jsx     # upload + semantic search
+│   │   │   └── Chat.jsx          # agent chat UI with tool trace + citations
+│   │   └── App.jsx               # routing + protected routes
+│   ├── Dockerfile                # multi-stage: Node build → nginx serve
+│   └── nginx.conf                # SPA fallback for React Router
+└── docker-compose.yml            # local orchestration (backend + frontend)
 ```
+
+---
+
+## Local setup
+
+### Prerequisites
+- Node.js 22+
+- Docker Desktop (optional, for containerized run)
+- MongoDB Atlas free cluster
+- Google AI Studio API key (free)
+- Tavily API key (free, 1000 searches/month)
+- Sentry DSN (free, optional — app works without it)
+
+### 1. Clone and install
+```bash
+git clone https://github.com/maruthipratap/ai-research-assistant.git
+cd ai-research-assistant
+
+cd backend && npm install
+cd ../frontend && npm install
+```
+
+### 2. Configure environment
+```bash
+cd backend
+cp .env.example .env
+# Fill in: MONGO_URI, JWT_SECRET, GEMINI_API_KEY, TAVILY_API_KEY, SENTRY_DSN
+```
+
+### 3. MongoDB Atlas Vector Search index
+In Atlas UI → your cluster → Atlas Search → Create Search Index → JSON Editor:
+- Collection: `chunks`
+- Index name: `vector_index`
+```json
+{
+  "fields": [
+    { "type": "vector", "path": "embedding", "numDimensions": 384, "similarity": "cosine" }
+  ]
+}
+```
+
+### 4. Run (standard)
+```bash
+# Terminal 1
+cd backend && npm run dev   # http://localhost:5000
+
+# Terminal 2
+cd frontend && npm run dev  # http://localhost:5173
+```
+
+### 5. Run (Docker)
+```bash
+docker compose up --build
+# Frontend: http://localhost:3000
+# Backend:  http://localhost:5000
+```
+
+---
+
+## Key design decisions
+
+**Why chunks in a separate collection, not nested in documents?**
+Each chunk needs its own vector field for Atlas Vector Search to index. Nesting arrays of embeddings inside documents doesn't match the standard vector DB pattern (one record = one vector), and would make post-filter queries harder.
+
+**Why local embeddings instead of OpenAI's API?**
+Zero API cost, no latency on calls, no dependency on a third-party service for a core pipeline step. `all-MiniLM-L6-v2` via transformers.js runs in Node as ONNX — 384-dim vectors, ~90MB one-time download, suitable for semantic similarity at this scale.
+
+**Why post-filter instead of pre-filter in vector search?**
+Simpler to implement and explain. The tradeoff: pre-filter (adding `user` to the index definition) is faster at scale since it reduces candidates before the ANN search; post-filter (what we do) applies the user constraint after retrieval. Fine at this scale, worth knowing the difference.
+
+**Why automatic model fallback?**
+Gemini's free tier has per-model daily quotas. Rather than surfacing a 429 error to the user, the agent silently retries with the next model in the chain (`gemini-3.1-flash-lite → gemini-2.5-flash → gemini-2.5-flash-lite`). Only quota errors trigger fallback — real errors still fail loudly.
+
+**Why explicit `Sentry.captureException` instead of relying on the Express error handler?**
+Sentry's automatic Express middleware only catches errors that flow through `next(err)`. Our routes catch errors internally and respond directly (the standard Express pattern for JSON APIs), so a centralized `logError()` utility explicitly calls `captureException` in every catch block.
+
+---
+
+## API reference
+
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| POST | `/api/auth/register` | ❌ | Create account |
+| POST | `/api/auth/login` | ❌ | Login, returns JWT |
+| GET | `/api/auth/profile` | ✅ | Get current user |
+| POST | `/api/documents/upload` | ✅ | Upload PDF/TXT → full processing pipeline |
+| GET | `/api/documents` | ✅ | List user's documents |
+| GET | `/api/documents/:id` | ✅ | Get one document |
+| POST | `/api/search/semantic` | ✅ | Vector similarity search across user's chunks |
+| POST | `/api/chat` | ✅ | Run agent loop, returns answer + tool trace + citations |
+| GET | `/api/health` | ❌ | Uptime check |
+
+---
+
+## Concepts demonstrated
+
+**NLP / ML**
+- Text extraction from PDFs, tokenization concepts, word-based chunking with overlap
+- Dense vector embeddings (sentence transformers, 384-dim, cosine similarity)
+- Semantic search vs keyword search
+- RAG pipeline: retrieval → augmented prompting → generation
+
+**LLM / GenAI**
+- Prompt engineering: system instructions, grounding rules, date injection, anti-hallucination constraints
+- Tool/function calling (Gemini's `functionDeclarations` + `functionResponse` pattern)
+- Agentic reasoning loop: model decides → tool executes → result fed back → repeat
+- Multi-turn conversation memory via history array
+- Model fallback chain for resilience
+
+**Production engineering**
+- JWT stateless auth, bcrypt password hashing
+- MongoDB Atlas Vector Search (cosine similarity index)
+- Docker multi-stage builds (Node build → nginx serve for frontend)
+- GitHub Actions CI (install, build, Docker image build on every push)
+- Cloud deployment split: Render (API server) + Vercel (static frontend)
+- Sentry error tracking with explicit `captureException` integration
+- Structured request logging middleware
+- Environment-based configuration, secrets never committed
