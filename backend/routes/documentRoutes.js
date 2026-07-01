@@ -6,13 +6,14 @@ import { protect } from "../middleware/authMiddleware.js";
 import { extractText } from "../utils/textExtractor.js";
 import { chunkText } from "../utils/chunker.js";
 import { embedBatch } from "../utils/embeddings.js";
+import { logError } from "../utils/logger.js";
 
 const router = express.Router();
 
 // Multer config: stores uploaded files on local disk under /uploads.
-// In Phase 3 (cloud deployment) we'll swap this storage engine for
-// AWS S3 - the rest of the app won't need to change, which is the point
-// of separating "storage" from "business logic."
+// In a real cloud deployment you'd swap this storage engine for something
+// like AWS S3 - the rest of the app won't need to change, which is the
+// point of separating "storage" from "business logic."
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) => {
@@ -40,11 +41,12 @@ router.post("/upload", protect, upload.single("file"), async (req, res) => {
       status: "processing",
     });
 
-    // Extract -> chunk -> embed -> store. This is the full Phase 2 pipeline.
-    // Done synchronously (inside the request) for clarity in this learning
-    // project. In a production system this would be offloaded to a background
-    // job/queue, since embedding a large document can take a while and you
-    // don't want to hold an HTTP connection open for it.
+    // Extract -> chunk -> embed -> store. This is the full document
+    // processing pipeline. Done synchronously (inside the request) for
+    // clarity in this learning project. In a production system this would
+    // be offloaded to a background job/queue, since embedding a large
+    // document can take a while and you don't want to hold an HTTP
+    // connection open for it.
     try {
       const text = await extractText(req.file.path, req.file.mimetype);
 
@@ -80,11 +82,16 @@ router.post("/upload", protect, upload.single("file"), async (req, res) => {
       doc.status = "failed";
       doc.processingError = extractErr.message;
       await doc.save();
-      console.error("Processing pipeline failed:", extractErr.message);
+      logError(extractErr, {
+        route: req.originalUrl,
+        stage: "document-processing",
+        documentId: doc._id,
+      });
     }
 
     res.status(201).json(doc);
   } catch (error) {
+    logError(error, { route: req.originalUrl });
     res.status(500).json({ message: error.message });
   }
 });

@@ -2,6 +2,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import { protect } from "../middleware/authMiddleware.js";
+import { logError } from "../utils/logger.js";
 
 const router = express.Router();
 
@@ -34,6 +35,7 @@ router.post("/register", async (req, res) => {
       token: generateToken(user._id),
     });
   } catch (error) {
+    logError(error, { route: req.originalUrl });
     res.status(500).json({ message: error.message });
   }
 });
@@ -55,6 +57,7 @@ router.post("/login", async (req, res) => {
       res.status(401).json({ message: "Invalid email or password" });
     }
   } catch (error) {
+    logError(error, { route: req.originalUrl });
     res.status(500).json({ message: error.message });
   }
 });
