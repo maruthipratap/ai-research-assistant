@@ -1,13 +1,18 @@
 import { useState, useRef, useEffect } from "react";
-import { Link } from "react-router-dom";
 import api from "../api/axios";
-import { useAuth } from "../context/AuthContext";
+import Sidebar from "../components/Sidebar";
+
+const IconSend = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <line x1="22" y1="2" x2="11" y2="13"/>
+    <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+  </svg>
+);
 
 export default function Chat() {
-  const [messages, setMessages] = useState([]); // {role, content, sources?}
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const { user, logout } = useAuth();
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -19,10 +24,6 @@ export default function Chat() {
     const text = input.trim();
     if (!text || loading) return;
 
-    // Snapshot the conversation BEFORE adding this new message - this is
-    // what gets sent as "history" so the backend knows what was already
-    // discussed. Capped to the last 10 turns to keep requests reasonably
-    // sized; error bubbles are excluded since they're not real conversation.
     const historyForRequest = messages
       .filter((m) => !m.isError)
       .slice(-10)
@@ -33,10 +34,7 @@ export default function Chat() {
     setLoading(true);
 
     try {
-      const { data } = await api.post("/chat", {
-        message: text,
-        history: historyForRequest,
-      });
+      const { data } = await api.post("/chat", { message: text, history: historyForRequest });
       setMessages((prev) => [
         ...prev,
         {
@@ -52,9 +50,7 @@ export default function Chat() {
         ...prev,
         {
           role: "assistant",
-          content:
-            err.response?.data?.message ||
-            "Something went wrong - check that GEMINI_API_KEY is set correctly in backend/.env",
+          content: err.response?.data?.message || "Something went wrong.",
           isError: true,
         },
       ]);
@@ -64,68 +60,88 @@ export default function Chat() {
   };
 
   return (
-    <div className="chat-page">
-      <header>
-        <h2>Chat — {user?.name}</h2>
-        <div>
-          <Link to="/dashboard">Documents</Link>
-          <button onClick={logout}>Log out</button>
+    <div className="chat-shell">
+      <Sidebar />
+      <div className="chat-main">
+        <div className="chat-header">
+          <div className="chat-header-dot" />
+          <span className="chat-header-title">AI Research Assistant</span>
+          <span className="chat-header-sub">Searches your documents · web · calculator</span>
         </div>
-      </header>
 
-      <div className="chat-window">
-        {messages.length === 0 && (
-          <p className="chat-empty">
-            Ask a question about a document you've uploaded.
-          </p>
-        )}
-
-        {messages.map((m, i) => (
-          <div key={i} className={`bubble ${m.role} ${m.isError ? "error-bubble" : ""}`}>
-            <p>{m.content}</p>
-            {m.toolsUsed && m.toolsUsed.length > 0 && (
-              <div className="tools-used">
-                {m.toolsUsed.map((t, j) => (
-                  <details key={j} className="tool-chip">
-                    <summary>
-                      🔧 {t.name}
-                      {t.args?.query ? `: "${t.args.query}"` : ""}
-                      {t.args?.expression ? `: ${t.args.expression}` : ""}
-                    </summary>
-                    <pre className="tool-result-text">{t.result}</pre>
-                  </details>
-                ))}
+        <div className="chat-window">
+          {messages.length === 0 && (
+            <div className="chat-empty">
+              <div className="chat-empty-icon">💬</div>
+              <div className="chat-empty-title">Ask anything</div>
+              <div className="chat-empty-sub">
+                Ask a question about your uploaded documents. The AI will search your knowledge base, the web, or calculate — whatever the question needs.
               </div>
-            )}
-            {m.sources && m.sources.length > 0 && (
-              <div className="sources">
-                <span className="sources-label">Sources:</span>
-                {m.sources.map((s) => (
-                  <span key={s.id} className="source-chip">
-                    [{s.id}] {s.sourceDocument} · chunk #{s.chunkIndex} · {s.score.toFixed(2)}
-                  </span>
-                ))}
-              </div>
-            )}
-            {m.modelUsed && <p className="model-used">via {m.modelUsed}</p>}
-          </div>
-        ))}
+            </div>
+          )}
 
-        {loading && <div className="bubble assistant loading">Thinking…</div>}
-        <div ref={bottomRef} />
+          {messages.map((m, i) => (
+            <div key={i} className={`bubble-row ${m.role}`}>
+              <div className={`bubble ${m.role} ${m.isError ? "error-bubble" : ""}`}>
+                <p>{m.content}</p>
+
+                {m.toolsUsed && m.toolsUsed.length > 0 && (
+                  <div className="tools-used">
+                    {m.toolsUsed.map((t, j) => (
+                      <details key={j} className="tool-chip">
+                        <summary>
+                          🔧 {t.name}
+                          {t.args?.query ? `: "${t.args.query}"` : ""}
+                          {t.args?.expression ? `: ${t.args.expression}` : ""}
+                        </summary>
+                        <pre className="tool-result-text">{t.result}</pre>
+                      </details>
+                    ))}
+                  </div>
+                )}
+
+                {m.sources && m.sources.length > 0 && (
+                  <div className="sources">
+                    <span className="sources-label">Sources</span>
+                    {m.sources.map((s) => (
+                      <span key={s.id} className="source-chip">
+                        [{s.id}] {s.sourceDocument} · {s.score.toFixed(2)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {m.modelUsed && <p className="model-used">via {m.modelUsed}</p>}
+              </div>
+            </div>
+          ))}
+
+          {loading && (
+            <div className="bubble-row assistant">
+              <div className="bubble loading">Thinking…</div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        <div className="chat-input-bar">
+          <form onSubmit={handleSend}>
+            <div className="chat-input-row">
+              <input
+                className="chat-input-field"
+                type="text"
+                placeholder="Ask about your documents…"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+              />
+              <button className="chat-send-btn" type="submit" disabled={loading || !input.trim()}>
+                <IconSend />
+              </button>
+            </div>
+          </form>
+          <p className="chat-hint">The AI can search your documents, look up the web, or calculate.</p>
+        </div>
       </div>
-
-      <form onSubmit={handleSend} className="chat-input">
-        <input
-          type="text"
-          placeholder="Ask about your documents..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-        />
-        <button type="submit" disabled={loading || !input.trim()}>
-          Send
-        </button>
-      </form>
     </div>
   );
 }
