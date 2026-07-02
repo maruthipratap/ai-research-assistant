@@ -481,6 +481,19 @@ body {
 .bubble.error-bubble { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
 .bubble.loading { color: var(--text-3); font-style: italic; background: var(--surface); border: 1px solid var(--border); }
 
+.bubble h1, .bubble h2, .bubble h3 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 10px 0 4px;
+}
+.bubble ul, .bubble ol {
+  padding-left: 18px;
+  margin: 6px 0;
+}
+.bubble li { margin-bottom: 3px; }
+.bubble p  { margin: 4px 0; }
+.bubble strong { font-weight: 600; }
+
 /* tool chips */
 .tools-used { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
 
@@ -595,3 +608,4 @@ body {
   .sidebar { display: none; }
   .main-content, .chat-main { margin-left: 0; padding: 20px 16px; }
 }
+

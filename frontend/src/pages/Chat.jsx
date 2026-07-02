@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import api from "../api/axios";
 import Sidebar from "../components/Sidebar";
+import ReactMarkdown from "react-markdown";
 
 const IconSend = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -83,7 +84,7 @@ export default function Chat() {
           {messages.map((m, i) => (
             <div key={i} className={`bubble-row ${m.role}`}>
               <div className={`bubble ${m.role} ${m.isError ? "error-bubble" : ""}`}>
-                <p>{m.content}</p>
+                <ReactMarkdown>{m.content}</ReactMarkdown>
 
                 {m.toolsUsed && m.toolsUsed.length > 0 && (
                   <div className="tools-used">
